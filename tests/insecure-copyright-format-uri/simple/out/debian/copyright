@@ -1,11 +1,10 @@
-Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: lintian-brush
-Upstream-Contact: Jelmer Vernooĳ <jelmer@debian.org>
-Source: https://salsa.debian.org/jelmer/lintian-brush
+Upstream-Contact: Jelmer
 
 Files: *
 Copyright:
- 2018 Jelmer Vernooĳ <jelmre@debian.org>
+ 2008-2017 Jelmer Vernooĳ
 License: GPL-2+
 
 License: GPL-2+

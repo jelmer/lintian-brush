@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Copyright (C) 2018 Jelmer Vernooij
+# Copyright (C) 2019 Jelmer Vernooij
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,20 +15,38 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-import unittest
+"""Tests for lintian_brush.rules."""
+
+from breezy.tests import (
+    TestCaseWithTransport,
+    )
+
+from lintian_brush.rules import (
+    update_rules,
+    )
 
 
-def test_suite():
-    names = [
-        'control',
-        'copyright',
-        'lintian_overrides',
-        'reformatting',
-        'rules',
-        'run',
-        'systemd',
-        ]
-    module_names = [__name__ + '.test_' + name for name in names]
-    module_names.append(__name__ + ".fixers.test_suite")
-    loader = unittest.TestLoader()
-    return loader.loadTestsFromNames(module_names)
+class UpdateRulesTests(TestCaseWithTransport):
+
+    def test_update_command(self):
+        self.build_tree_contents([('debian/', ), ('debian/rules', """\
+SOMETHING = 1
+
+all:
+\techo blah
+\techo foo
+""")])
+
+        def replace(line):
+            if line == b'echo blah':
+                return b'echo bloe'
+            return line
+        self.assertTrue(update_rules(replace))
+        self.assertFalse(update_rules(replace))
+        self.assertFileEqual("""\
+SOMETHING = 1
+
+all:
+\techo bloe
+\techo foo
+""", 'debian/rules')

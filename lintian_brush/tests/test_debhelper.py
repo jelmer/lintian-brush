@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# Copyright (C) 2018 Jelmer Vernooij
+# Copyright (C) 2019 Jelmer Vernooij
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,29 +15,16 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-import unittest
+"""Tests for lintian_brush.debhelper."""
+
+from breezy.tests import (
+    TestCase,
+    )
+
+from ..debhelper import lowest_non_deprecated_compat_level
 
 
-def test_suite():
-    names = [
-        'changelog',
-        'config',
-        'control',
-        'copyright',
-        'deb822',
-        'debhelper',
-        'dirty_tracker',
-        'lintian_overrides',
-        'reformatting',
-        'rules',
-        'run',
-        'salsa',
-        'systemd',
-        'upstream_metadata',
-        'vcs',
-        'watch',
-        ]
-    module_names = [__name__ + '.test_' + name for name in names]
-    module_names.append(__name__ + ".fixers.test_suite")
-    loader = unittest.TestLoader()
-    return loader.loadTestsFromNames(module_names)
+class LowestNonDeprecatedCompatLevel(TestCase):
+
+    def test_is_valid(self):
+        self.assertIsInstance(lowest_non_deprecated_compat_level(), int)

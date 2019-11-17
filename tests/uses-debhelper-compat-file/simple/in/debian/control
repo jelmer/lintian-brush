@@ -3,12 +3,12 @@ Section: admin
 Priority: optional
 Maintainer: Jelmer Vernooĳ <jelmer@debian.org>
 Build-Depends:
- debhelper (>= 12~),
+ debhelper (>= 11),
  pkg-config,
  uuid-dev
 Standards-Version: 4.2.0
 
-Package: f2fs-tools
+Package: blah
 Architecture: linux-any
 Depends: libf2fs5 (= ${binary:Version}), libf2fs-format4 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
 Description: Tools for Flash-Friendly File System

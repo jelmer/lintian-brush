@@ -15,15 +15,11 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-"""Support for acessing the VCS Watch database."""
+"""Support for accessing the DebBugs database."""
 
 
-class VcsWatchError(Exception):
-    """Error from vcswatch."""
-
-
-class VcsWatch(object):
-    """Read VcsWatch data through UDD."""
+class DebBugs(object):
+    """Read DebBugs data through UDD."""
 
     def __init__(self):
         self._conn = None
@@ -32,20 +28,18 @@ class VcsWatch(object):
         from .udd import connect_udd_mirror
         self._conn = await connect_udd_mirror()
 
-    async def get_package(self, name):
-        """Get the VCS information for a package.
+    async def check_bug(self, package, bugid):
+        """Check that a bug belongs to a particular package.
 
         Args:
-          name: Package name
+          package: Package name
+          bugid: Bug number
         Returns:
-          Tuple with (vcs_type, vcs_url, vcs_browser)
+          Boolean
         """
         assert self._conn is not None, "call connect() first"
         row = await self._conn.fetchrow("""
-select vcs, url, browser, status, error from vcswatch
-where source = $1""", name)
+select package from bugs where id = $1""", bugid)
         if row is None:
-            raise KeyError(name)
-        if row[3] == 'ERROR':
-            raise VcsWatchError(row[4])
-        return row[:3]
+            return False
+        return row[0] == package

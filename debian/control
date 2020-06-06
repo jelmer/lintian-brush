@@ -3,6 +3,7 @@ Section: devel
 Priority: optional
 Maintainer: Jelmer Vernooĳ <jelmer@debian.org>
 Build-Depends: bash-completion,
+               decopy,
                devscripts,
                dh-python,
                dos2unix,
@@ -40,7 +41,7 @@ Depends: devscripts,
          ${misc:Depends},
          ${python3:Depends}
 Recommends: lintian, dos2unix, gpg, python3-pyinotify, python3-asyncpg, libdebhelper-perl
-Suggests: gnome-pkg-tools, postgresql-common
+Suggests: gnome-pkg-tools, postgresql-common, decopy
 Description: automatically fix lintian problems
  This package contains a set of scripts that can automatically fix more than 80
  common lintian issues in Debian packages.

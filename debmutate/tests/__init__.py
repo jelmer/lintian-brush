@@ -1,5 +1,6 @@
 #!/usr/bin/python
 # Copyright (C) 2018 Jelmer Vernooij
+# This file is a part of lintian-brush.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,26 +21,9 @@ import unittest
 
 def test_suite():
     names = [
-        'changelog',
-        'config',
-        'copyright',
-        'debhelper',
-        'detect_gbp_dch',
-        'dirty_tracker',
-        'lintian_overrides',
-        'multiarch_hints',
-        'patches',
-        'rules',
-        'run',
-        'salsa',
-        'systemd',
-        'upstream_metadata',
-        'vcs',
-        'watch',
-        'xdg',
-        'yaml',
+        'control',
+        'deb822',
         ]
     module_names = [__name__ + '.test_' + name for name in names]
-    module_names.append(__name__ + ".fixers.test_suite")
     loader = unittest.TestLoader()
     return loader.loadTestsFromNames(module_names)

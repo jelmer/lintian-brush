@@ -29,6 +29,11 @@ from warnings import warn
 
 from debian.deb822 import Deb822
 
+from debmutate.vcs import (
+    split_vcs_url,
+    unsplit_vcs_url,
+    )
+
 from lintian_brush import (
     USER_AGENT,
     DEFAULT_URLLIB_TIMEOUT,
@@ -42,8 +47,6 @@ from lintian_brush.vcs import (
     plausible_url as plausible_vcs_url,
     sanitize_url as sanitize_vcs_url,
     is_gitlab_site,
-    split_vcs_url,
-    unsplit_vcs_url,
     )
 from urllib.request import urlopen, Request
 

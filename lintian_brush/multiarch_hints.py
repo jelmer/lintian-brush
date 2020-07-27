@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# Copyright (C) 2019 Jelmer Vernooij
+# Copyright (C) 2019-2020 Jelmer Vernooij
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -27,27 +27,19 @@ from urllib.error import HTTPError
 from urllib.request import urlopen, Request
 
 from lintian_brush import (
-    Fixer,
-    NoChanges,
-    NotDebianPackage,
-    FixerResult,
-    min_certainty,
-    USER_AGENT,
-    SUPPORTED_CERTAINTIES,
-    DEFAULT_URLLIB_TIMEOUT,
-    certainty_sufficient,
     get_committer,
-    run_lintian_fixer,
     version_string,
     )
 from debmutate.control import (
-    update_control,
+    ControlEditor,
     format_relations,
     parse_relations,
     )
 
 
+USER_AGENT = 'apply-multiarch-hints/' + version_string
 MULTIARCH_HINTS_URL = 'https://dedup.debian.net/static/multiarch-hints.yaml.xz'
+DEFAULT_URLLIB_TIMEOUT = 10
 
 
 def parse_multiarch_hints(f):
@@ -200,88 +192,41 @@ def apply_hint_arch_all(binary, hint):
     return 'Make package Architecture: all.'
 
 
-class MultiArchHintApplier(object):
-
-    def __init__(self, kind, fn, certainty):
-        self.kind = kind
-        self.fn = fn
-        self.certainty = certainty
-
-
-class MultiArchFixerResult(FixerResult):
-
-    def __init__(self, description, certainty, changes):
-        super(MultiArchFixerResult, self).__init__(
-            description=description, certainty=certainty)
-        self.changes = changes
-
-
-def apply_multiarch_hints(hints, minimum_certainty='certain'):
+def apply_multiarch_hints(path, hints, kinds):
     changes = []
-    appliers = {applier.kind: applier for applier in APPLIERS}
-
-    def update_binary(binary):
-        for hint in hints.get(binary['Package'], []):
-            kind = hint['link'].rsplit('#', 1)[1]
-            applier = appliers[kind]
-            if not certainty_sufficient(
-                    applier.certainty, minimum_certainty):
-                continue
-            description = applier.fn(binary, hint)
-            if description:
-                changes.append(
-                    (binary, hint, description, applier.certainty))
-    update_control(binary_package_cb=update_binary)
+    with ControlEditor(path) as editor:
+        for binary in editor.binaries:
+            for hint in hints.get(binary['Package'], []):
+                kind = hint['link'].rsplit('#', 1)[1]
+                if kind in kinds:
+                    continue
+                applier = APPLIERS[kind]
+                description = applier(binary, hint)
+                if description:
+                    changes.append(
+                        (binary, hint, description, kind))
     return changes
 
 
-class MultiArchHintFixer(Fixer):
-
-    def __init__(self, hints):
-        super(MultiArchHintFixer, self).__init__(name='multiarch-hints')
-        self._hints = hints
-
-    def run(self, basedir, package, current_version, compat_release,
-            minimum_certainty=None, trust_package=False,
-            allow_reformatting=False, net_access=True, opinionated=False,
-            diligence=0):
-        if not net_access:
-            # This should never happen - perhaps if something else imported and
-            # used this class?
-            raise NoChanges()
-        old_cwd = os.getcwd()
-        try:
-            os.chdir(basedir)
-            changes = apply_multiarch_hints(self._hints, minimum_certainty)
-        finally:
-            os.chdir(old_cwd)
-
-        overall_certainty = min_certainty(
-            [certainty for (binary, hint, description, certainty) in changes])
-        overall_description = "Apply multi-arch hints.\n" + "\n".join(
-            ["+ %s: %s" % (binary['Package'], description)
-             for (binary, hint, description, certainty) in changes])
-        return MultiArchFixerResult(
-            overall_description, certainty=overall_certainty, changes=changes)
-
-
-APPLIERS = [
-    MultiArchHintApplier('ma-foreign', apply_hint_ma_foreign, 'certain'),
-    MultiArchHintApplier('file-conflict', apply_hint_file_conflict, 'certain'),
-    MultiArchHintApplier(
-        'ma-foreign-library', apply_hint_ma_foreign_lib, 'certain'),
-    MultiArchHintApplier('dep-any', apply_hint_dep_any, 'certain'),
-    MultiArchHintApplier('ma-same', apply_hint_ma_same, 'certain'),
-    MultiArchHintApplier('arch-all', apply_hint_arch_all, 'possible'),
-]
+APPLIERS = {
+    'ma-foreign': apply_hint_ma_foreign,
+    'file-conflict': apply_hint_file_conflict,
+    'ma-foreign-library': apply_hint_ma_foreign_lib,
+    'dep-any': apply_hint_dep_any,
+    'ma-same': apply_hint_ma_same,
+    'arch-all': apply_hint_arch_all,
+}
 
 
 def main(argv=None):
+    from debian.changelog import Changelog
     import argparse
     from breezy.workingtree import WorkingTree
+    from breezy.errors import NoSuchFile
 
     import breezy  # noqa: E402
     breezy.initialize()
+    from breezy.commit import NullCommitReporter
     import breezy.git  # noqa: E402
     import breezy.bzr  # noqa: E402
     from breezy.trace import note  # noqa: E402
@@ -300,13 +245,6 @@ def main(argv=None):
         '--identity',
         help='Print user identity that would be used when committing',
         action='store_true', default=False)
-    # Hide the minimum-certainty option for the moment.
-    parser.add_argument(
-        '--minimum-certainty',
-        type=str,
-        choices=SUPPORTED_CERTAINTIES,
-        default=None,
-        help=argparse.SUPPRESS)
     parser.add_argument(
         '--no-update-changelog', action="store_false", default=None,
         dest="update_changelog", help="do not update the changelog")
@@ -314,55 +252,89 @@ def main(argv=None):
         '--update-changelog', action="store_true", dest="update_changelog",
         help="force updating of the changelog", default=None)
     parser.add_argument(
+        '--kinds', choices=list(APPLIERS.keys()), nargs="+",
+        default=['ma-foreign', 'file-conflict', 'ma-foreign-library',
+                 'dep-any', 'ma-same'],
+        help='Which kinds of multi-arch hints to apply.')
+    parser.add_argument(
         '--version', action='version', version='%(prog)s ' + version_string)
     parser.add_argument(
         '--allow-reformatting', default=None, action='store_true',
         help=argparse.SUPPRESS)
 
     args = parser.parse_args(argv)
-    minimum_certainty = args.minimum_certainty
-    wt, subpath = WorkingTree.open_containing(args.directory)
+    use_inotify = (False if args.disable_inotify else None),
+    ws = Workspace.from_path(args.directory, use_inotify=use_inotify)
     if args.identity:
-        note(get_committer(wt))
+        note(get_committer(ws.tree))
         return 0
 
     update_changelog = args.update_changelog
-    allow_reformatting = args.allow_reformatting
     try:
-        cfg = Config.from_workingtree(wt, subpath)
+        cfg = Config.from_workspace(ws)
     except FileNotFoundError:
         pass
     else:
-        if minimum_certainty is None:
-            minimum_certainty = cfg.minimum_certainty()
-        if allow_reformatting is None:
-            allow_reformatting = cfg.allow_reformatting()
         if update_changelog is None:
             update_changelog = cfg.update_changelog()
 
     with cache_download_multiarch_hints() as f:
         hints = multiarch_hints_by_binary(parse_multiarch_hints(f))
 
-    use_inotify = (False if args.disable_inotify else None),
     try:
-        with Workspace(wt, subpath=subpath, use_inotify=use_inotify) as ws:
+        with ws:
+            changelog_path = ws.tree_path('debian/changelog')
             try:
-                result, summary = run_lintian_fixer(
-                    ws, MultiArchHintFixer(hints),
-                    update_changelog=update_changelog,
-                    minimum_certainty=minimum_certainty,
-                    allow_reformatting=allow_reformatting,
-                    net_access=True)
-            except NoChanges:
-                note('Nothing to do.')
-            except NotDebianPackage:
-                note("%s: Not a debian package.", wt.basedir)
+                with ws.tree.get_file(changelog_path) as f:
+                    cl = Changelog(f, max_blocks=1)
+            except NoSuchFile:
+                note("%s: Not a debian package.", ws.abspath())
                 return 1
-            else:
-                for binary, hint, description, certainty in result.changes:
-                    note('%s: %s' % (binary['Package'], description))
+
+            changes = apply_multiarch_hints(
+                ws.abspath('debian/control'), hints, args.kinds)
+
+            if not changes:
+                note('Nothing to do.')
+                return 0
+
+            overall_description = "Apply multi-arch hints.\n" + "\n".join(
+                ["+ %s: %s" % (binary['Package'], description)
+                 for (binary, hint, description, kind) in changes])
+
+            if update_changelog is None:
+                from .detect_gbp_dch import guess_update_changelog
+                dch_guess = guess_update_changelog(ws.tree, ws.subpath, cl)
+                if dch_guess:
+                    update_changelog, explanation = dch_guess
+                    if update_changelog:
+                        extra = 'Specify --no-update-changelog to override.'
+                    else:
+                        extra = 'Specify --update-changelog to override.'
+                    note('%s %s', explanation, extra)
+                else:
+                    # Assume we should update changelog
+                    update_changelog = True
+
+            if update_changelog:
+                from .changelog import add_changelog_entry
+                add_changelog_entry(
+                    ws.tree, changelog_path, overall_description)
+
+            description = overall_description + "\n"
+            description += "\n"
+            description += "Changes-By: apply-multiarch-hints\n"
+
+            committer = get_committer(ws.tree)
+
+            ws.commit(
+                message=description, allow_pointless=False,
+                reporter=NullCommitReporter(),
+                committer=committer)
+            for binary, hint, description, kind in changes:
+                note('%s: %s' % (binary['Package'], description))
     except WorkspaceDirty:
-        note("%s: Please commit pending changes first.", wt.basedir)
+        note("%s: Please commit pending changes first.", ws.abspath())
         return 1
 
 

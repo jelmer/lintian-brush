@@ -62,6 +62,10 @@ class Config(object):
     def from_workingtree(cls, wt, subpath):
         return cls(os.path.join(wt.basedir, subpath, PACKAGE_CONFIG_FILENAME))
 
+    @classmethod
+    def from_workspace(cls, ws):
+        return cls.from_workingtree(ws.tree, ws.subpath)
+
     def compat_release(self):
         value = self._obj.get('compat-release')
         codename = resolve_release_codename(value)

@@ -32,8 +32,6 @@ from breezy.patches import parse_patches, apply_patches
 
 from debian.changelog import Changelog
 
-from . import reset_tree
-
 
 DEFAULT_DEBIAN_PATCHES_DIR = 'debian/patches'
 
@@ -326,32 +324,28 @@ def add_patch(tree, patches_directory, name, contents, header=None):
     return patchname
 
 
-def move_upstream_changes_to_patch(
-        local_tree, subpath, patch_name, description,
-        dirty_tracker=None):
+def move_upstream_changes_to_patch(ws, patch_name, description):
     """Move upstream changes to patch.
 
     Args:
-      local_tree: local tree
-      subpath: subpath
+      ws: Workspace
       patch_name: Suggested patch name
       description: Description
-      dirty_tracker: Dirty tracker
     """
     diff = BytesIO()
-    basis_tree = local_tree.basis_tree()
-    show_diff_trees(basis_tree, local_tree, diff)
-    reset_tree(local_tree, dirty_tracker, subpath)
+    basis_tree = ws.tree.basis_tree()
+    show_diff_trees(basis_tree, ws.tree, diff)
+    ws.reset()
     header = Message()
     lines = description.splitlines()
     header['Description'] = lines[0].rstrip('\n')
     header.set_payload(''.join([line + '\n' for line in lines[1:]]).lstrip())
-    patches_directory = tree_patches_directory(local_tree)
+    patches_directory = tree_patches_directory(ws.tree)
     patchname = add_patch(
-        local_tree, patches_directory, patch_name, diff.getvalue(), header)
+        ws.tree, patches_directory, patch_name, diff.getvalue(), header)
     specific_files = [
-        os.path.join(subpath, patches_directory),
-        os.path.join(subpath, patches_directory, 'series'),
-        os.path.join(subpath, patches_directory, patchname)]
-    local_tree.add(specific_files)
+        os.path.join(ws.subpath, patches_directory),
+        os.path.join(ws.subpath, patches_directory, 'series'),
+        os.path.join(ws.subpath, patches_directory, patchname)]
+    ws.tree.add(specific_files)
     return specific_files, patchname

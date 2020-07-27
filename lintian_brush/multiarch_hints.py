@@ -30,7 +30,6 @@ from lintian_brush import (
     Fixer,
     NoChanges,
     NotDebianPackage,
-    PendingChanges,
     FixerResult,
     min_certainty,
     USER_AGENT,
@@ -38,8 +37,6 @@ from lintian_brush import (
     DEFAULT_URLLIB_TIMEOUT,
     certainty_sufficient,
     get_committer,
-    get_dirty_tracker,
-    check_clean_tree,
     run_lintian_fixer,
     version_string,
     )
@@ -288,6 +285,7 @@ def main(argv=None):
     import breezy.git  # noqa: E402
     import breezy.bzr  # noqa: E402
     from breezy.trace import note  # noqa: E402
+    from breezy.workspace import Workspace, WorkspaceDirty
 
     from .config import Config
 
@@ -342,36 +340,30 @@ def main(argv=None):
         if update_changelog is None:
             update_changelog = cfg.update_changelog()
 
-    use_inotify = (False if args.disable_inotify else None),
-    try:
-        check_clean_tree(wt)
-    except PendingChanges:
-        note("%s: Please commit pending changes first.", wt.basedir)
-        return 1
-
-    dirty_tracker = get_dirty_tracker(wt, subpath, use_inotify)
-    if dirty_tracker:
-        dirty_tracker.mark_clean()
-
     with cache_download_multiarch_hints() as f:
         hints = multiarch_hints_by_binary(parse_multiarch_hints(f))
 
+    use_inotify = (False if args.disable_inotify else None),
     try:
-        result, summary = run_lintian_fixer(
-            wt, MultiArchHintFixer(hints),
-            update_changelog=update_changelog,
-            minimum_certainty=minimum_certainty,
-            dirty_tracker=dirty_tracker,
-            subpath=subpath, allow_reformatting=allow_reformatting,
-            net_access=True)
-    except NoChanges:
-        note('Nothing to do.')
-    except NotDebianPackage:
-        note("%s: Not a debian package.", wt.basedir)
+        with Workspace(wt, subpath=subpath, use_inotify=use_inotify) as ws:
+            try:
+                result, summary = run_lintian_fixer(
+                    ws, MultiArchHintFixer(hints),
+                    update_changelog=update_changelog,
+                    minimum_certainty=minimum_certainty,
+                    allow_reformatting=allow_reformatting,
+                    net_access=True)
+            except NoChanges:
+                note('Nothing to do.')
+            except NotDebianPackage:
+                note("%s: Not a debian package.", wt.basedir)
+                return 1
+            else:
+                for binary, hint, description, certainty in result.changes:
+                    note('%s: %s' % (binary['Package'], description))
+    except WorkspaceDirty:
+        note("%s: Please commit pending changes first.", wt.basedir)
         return 1
-    else:
-        for binary, hint, description, certainty in result.changes:
-            note('%s: %s' % (binary['Package'], description))
 
 
 if __name__ == '__main__':

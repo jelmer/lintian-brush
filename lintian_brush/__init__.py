@@ -22,29 +22,23 @@ import errno
 import io
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import traceback
 from typing import Optional, List, Sequence, Iterator, Iterable
-import warnings
 
 from breezy import ui
 
 import breezy.bzr  # noqa: F401
 import breezy.git  # noqa: F401
-from breezy.clean_tree import (
-    iter_deletables,
-    )
 from breezy.commit import NullCommitReporter
 from breezy.errors import NoSuchFile
 from breezy.osutils import is_inside
-from breezy.rename_map import RenameMap
 from breezy.trace import note
-from breezy.transform import revert
 from breezy.workingtree import WorkingTree
+from breezy.workspace import Workspace
 
 from debian.deb822 import Deb822
 
@@ -465,30 +459,6 @@ def increment_version(v: Version) -> None:
                 '\\d+$', lambda x: str(int(x.group())+1), v.upstream_version)
 
 
-def delete_items(deletables, dry_run: bool = False):
-    """Delete files in the deletables iterable"""
-    def onerror(function, path, excinfo):
-        """Show warning for errors seen by rmtree.
-        """
-        # Handle only permission error while removing files.
-        # Other errors are re-raised.
-        if function is not os.remove or excinfo[1].errno != errno.EACCES:
-            raise
-        warnings.warn('unable to remove %s' % path)
-    for path, subp in deletables:
-        if os.path.isdir(path):
-            shutil.rmtree(path, onerror=onerror)
-        else:
-            try:
-                os.unlink(path)
-            except OSError as e:
-                # We handle only permission error here
-                if e.errno != errno.EACCES:
-                    raise e
-                warnings.warn(
-                    'unable to remove "{0}": {1}.'.format(path, e.strerror))
-
-
 def get_committer(tree: WorkingTree) -> str:
     """Get the committer string for a tree.
 
@@ -553,26 +523,6 @@ def only_changes_last_changelog_block(
         return str(new_cl) == str(old_cl)
 
 
-def reset_tree(local_tree: WorkingTree, dirty_tracker=None,
-               subpath: str = '') -> None:
-    """Reset a tree back to its basis tree.
-
-    This will leave ignored and detritus files alone.
-
-    Args:
-      local_tree: tree to work on
-      dirty_tracker: Optional dirty tracker
-      subpath: Subpath to operate on
-    """
-    if dirty_tracker and not dirty_tracker.is_dirty():
-        return
-    revert(local_tree, local_tree.branch.basis_tree(),
-           [subpath] if subpath not in ('.', '') else None)
-    deletables = list(iter_deletables(
-        local_tree, unknown=True, ignored=False, detritus=False))
-    delete_items(deletables)
-
-
 def certainty_sufficient(actual_certainty: str,
                          minimum_certainty: Optional[str]) -> bool:
     """Check if the actual certainty is sufficient.
@@ -631,7 +581,7 @@ def _note_changelog_policy(policy, msg):
     _changelog_policy_noted = True
 
 
-def run_lintian_fixer(local_tree: WorkingTree,
+def run_lintian_fixer(ws: Workspace,
                       fixer: Fixer,
                       committer: Optional[str] = None,
                       update_changelog: Optional[bool] = None,
@@ -639,8 +589,6 @@ def run_lintian_fixer(local_tree: WorkingTree,
                       minimum_certainty: Optional[str] = None,
                       trust_package: bool = False,
                       allow_reformatting: bool = False,
-                      dirty_tracker=None,
-                      subpath: str = '.',
                       net_access: bool = True,
                       opinionated: Optional[bool] = None,
                       diligence: int = 0):
@@ -657,25 +605,19 @@ def run_lintian_fixer(local_tree: WorkingTree,
         about its changes.
       trust_package: Whether to run code from the package if necessary
       allow_reformatting: Whether to allow reformatting of changed files
-      dirty_tracker: Optional object that can be used to tell if the tree
-        has been changed.
-      subpath: Path in tree to operate on
       net_access: Whether to allow accessing external services
       opinionated: Whether to be opinionated
       diligence: Level of diligence
     Returns:
       tuple with set of FixerResult, summary of the changes
     """
-    if subpath == '.':
-        changelog_path = 'debian/changelog'
-    else:
-        changelog_path = os.path.join(subpath, 'debian/changelog')
+    changelog_path = ws.tree_path('debian/changelog')
 
     try:
-        with local_tree.get_file(changelog_path) as f:
+        with ws.tree.get_file(changelog_path) as f:
             cl = Changelog(f, max_blocks=1)
     except NoSuchFile:
-        raise NotDebianPackage(local_tree, subpath)
+        raise NotDebianPackage(ws.tree, ws.subpath)
     package = cl.package
     if cl.distributions == 'UNRELEASED':
         current_version = cl.version
@@ -688,7 +630,7 @@ def run_lintian_fixer(local_tree: WorkingTree,
         minimum_certainty = DEFAULT_MINIMUM_CERTAINTY
     try:
         result = fixer.run(
-            local_tree.abspath(subpath),
+            ws.abspath(),
             package=package,
             current_version=current_version,
             compat_release=compat_release,
@@ -699,39 +641,15 @@ def run_lintian_fixer(local_tree: WorkingTree,
             opinionated=opinionated,
             diligence=diligence)
     except BaseException:
-        reset_tree(local_tree, dirty_tracker, subpath)
+        ws.reset()
         raise
     if not certainty_sufficient(result.certainty, minimum_certainty):
-        reset_tree(local_tree, dirty_tracker, subpath)
+        ws.reset()
         raise NotCertainEnough(fixer, result.certainty, minimum_certainty)
-    specific_files: Optional[List[str]]
-    if dirty_tracker:
-        relpaths = dirty_tracker.relpaths()
-        # Sort paths so that directories get added before the files they
-        # contain (on VCSes where it matters)
-        local_tree.add(
-            [p for p in sorted(relpaths)
-             if local_tree.has_filename(p) and not
-                local_tree.is_ignored(p)])
-        specific_files = [
-            p for p in relpaths
-            if local_tree.is_versioned(p)]
-        if not specific_files:
-            raise NoChanges(fixer, "Script didn't make any changes")
-    else:
-        local_tree.smart_add([local_tree.abspath(subpath)])
-        specific_files = [subpath] if subpath != '.' else None
 
-    basis_tree = local_tree.basis_tree()
-    if local_tree.supports_setting_file_ids():
-        RenameMap.guess_renames(
-            basis_tree, local_tree, dry_run=False)
+    changes = list(ws.iter_changes())
 
-    changes = list(local_tree.iter_changes(
-        basis_tree, specific_files=specific_files,
-        want_unversioned=False, require_versioned=True))
-
-    if len(local_tree.get_parent_ids()) <= 1 and not changes:
+    if len(ws.tree.get_parent_ids()) <= 1 and not changes:
         raise NoChanges(fixer, "Script didn't make any changes")
 
     if not result.description:
@@ -745,14 +663,13 @@ def run_lintian_fixer(local_tree: WorkingTree,
     # export them to debian/patches
     if has_non_debian_changes(changes) and current_version.debian_revision:
         # TODO(jelmer): Apply all patches before generating a diff.
-        reset_tree(local_tree, dirty_tracker, subpath)
+        ws.reset()
         raise NoChanges("Creating upstream patches not supported yet")
 
         from .patches import move_upstream_changes_to_patch
         try:
-            specific_files, patch_name = move_upstream_changes_to_patch(
-                local_tree, subpath, result.patch_name, result.description,
-                dirty_tracker)
+            patch_name = move_upstream_changes_to_patch(
+                ws, result.patch_name, result.description)
         except FileExistsError as e:
             raise NoChanges('patch path %s already exists\n' % e.args[0])
 
@@ -760,7 +677,7 @@ def run_lintian_fixer(local_tree: WorkingTree,
 
     if update_changelog is None:
         from .detect_gbp_dch import guess_update_changelog
-        dch_guess = guess_update_changelog(local_tree, subpath, cl)
+        dch_guess = guess_update_changelog(ws.tree, ws.subpath, cl)
         if dch_guess:
             update_changelog = dch_guess[0]
             _note_changelog_policy(update_changelog, dch_guess[1])
@@ -769,16 +686,14 @@ def run_lintian_fixer(local_tree: WorkingTree,
             update_changelog = True
 
     if update_changelog and only_changes_last_changelog_block(
-            local_tree, changelog_path, changes):
+            ws.tree, changelog_path, changes):
         # If the script only changed the last entry in the changelog,
         # don't update the changelog
         update_changelog = False
 
     if update_changelog:
         from .changelog import add_changelog_entry
-        add_changelog_entry(local_tree, changelog_path, [summary] + details)
-        if specific_files:
-            specific_files.append(changelog_path)
+        add_changelog_entry(ws.tree, changelog_path, [summary] + details)
 
     description = result.description + "\n"
     description += "\n"
@@ -789,13 +704,12 @@ def run_lintian_fixer(local_tree: WorkingTree,
             "See-also: https://lintian.debian.org/tags/%s.html\n" % tag)
 
     if committer is None:
-        committer = get_committer(local_tree)
+        committer = get_committer(ws.tree)
 
-    revid = local_tree.commit(
-        description, allow_pointless=False,
+    revid = ws.commit(
+        message=description, allow_pointless=False,
         reporter=NullCommitReporter(),
-        committer=committer,
-        specific_files=specific_files)
+        committer=committer)
     result.revision_id = revid
     # TODO(jelmer): Run sbuild & verify lintian warning is gone?
     return result, summary
@@ -819,24 +733,6 @@ class ManyResult(object):
 
     def __iter__(self):
         return iter(self.__tuple__())
-
-
-def get_dirty_tracker(local_tree: WorkingTree,
-                      subpath: str = '',
-                      use_inotify: bool = None):
-    """Create a dirty tracker object."""
-    if use_inotify is True:
-        from .dirty_tracker import DirtyTracker
-        return DirtyTracker(local_tree, subpath)
-    elif use_inotify is False:
-        return None
-    else:
-        try:
-            from .dirty_tracker import DirtyTracker
-        except ImportError:
-            return None
-        else:
-            return DirtyTracker(local_tree, subpath)
 
 
 def run_lintian_fixers(local_tree: WorkingTree,
@@ -880,28 +776,24 @@ def run_lintian_fixers(local_tree: WorkingTree,
         2. dictionary mapping fixer names for fixers that failed to run to the
            error that occurred
     """
-    check_clean_tree(local_tree)
     fixers = list(fixers)
-    dirty_tracker = get_dirty_tracker(
-        local_tree, subpath=subpath, use_inotify=use_inotify)
     ret = ManyResult()
-    with ui.ui_factory.nested_progress_bar() as pb:
+    with Workspace(
+            local_tree, subpath=subpath, use_inotify=use_inotify) as ws, \
+            ui.ui_factory.nested_progress_bar() as pb:
         for i, fixer in enumerate(fixers):
             pb.update('Running fixer %r on %s' %
                       (fixer, local_tree.abspath(subpath)),
                       i, len(fixers))
             start = time.time()
-            if dirty_tracker:
-                dirty_tracker.mark_clean()
             try:
                 result, summary = run_lintian_fixer(
-                        local_tree, fixer, update_changelog=update_changelog,
+                        ws, fixer, update_changelog=update_changelog,
                         committer=committer, compat_release=compat_release,
                         minimum_certainty=minimum_certainty,
                         trust_package=trust_package,
                         allow_reformatting=allow_reformatting,
-                        dirty_tracker=dirty_tracker,
-                        subpath=subpath, net_access=net_access,
+                        net_access=net_access,
                         opinionated=opinionated,
                         diligence=diligence)
             except FormattingUnpreservable as e:

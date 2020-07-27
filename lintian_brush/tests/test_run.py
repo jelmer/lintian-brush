@@ -32,6 +32,7 @@ from breezy.tests import (
     TestCase,
     TestCaseWithTransport,
     )
+from breezy.workspace import Workspace
 
 from lintian_brush import (
     Fixer,
@@ -204,17 +205,17 @@ Arch: all
         tree.remove('debian/changelog')
         os.remove('debian/changelog')
         tree.commit("not a debian dir")
-        with tree.lock_write():
+        with Workspace(tree) as ws:
             self.assertRaises(
                 NotDebianPackage, run_lintian_fixer,
-                tree, DummyFixer('dummy', 'some-tag'),
+                ws, DummyFixer('dummy', 'some-tag'),
                 update_changelog=False)
 
     def test_simple_modify(self):
         tree = self.make_test_tree()
-        with tree.lock_write():
+        with Workspace(tree) as ws:
             result, summary = run_lintian_fixer(
-                tree, DummyFixer('dummy', 'some-tag'),
+                ws, DummyFixer('dummy', 'some-tag'),
                 update_changelog=False)
         self.assertEqual(summary, "Fixed some tag.")
         self.assertEqual(['some-tag'], result.fixed_lintian_tags)
@@ -232,10 +233,10 @@ Arch: all
                 with open(os.path.join(basedir, 'debian/somefile'), 'w') as f:
                     f.write("test")
                 return FixerResult("Renamed a file.", certainty='possible')
-        with tree.lock_write():
+        with Workspace(tree) as ws:
             self.assertRaises(
                 NoChanges, run_lintian_fixer,
-                tree, UncertainFixer('dummy', 'some-tag'),
+                ws, UncertainFixer('dummy', 'some-tag'),
                 update_changelog=False, minimum_certainty='certain')
         self.assertEqual(1, tree.branch.revno())
 
@@ -247,9 +248,9 @@ Arch: all
                 with open(os.path.join(basedir, 'debian/somefile'), 'w') as f:
                     f.write("test")
                 return FixerResult("Renamed a file.", certainty='possible')
-        with tree.lock_write():
+        with Workspace(tree) as ws:
             result, summary = run_lintian_fixer(
-                tree, UncertainFixer('dummy', 'some-tag'),
+                ws, UncertainFixer('dummy', 'some-tag'),
                 update_changelog=False, minimum_certainty='possible')
         self.assertEqual(2, tree.branch.revno())
 
@@ -261,9 +262,9 @@ Arch: all
                 with open(os.path.join(basedir, 'debian/somefile'), 'w') as f:
                     f.write("test")
                 return FixerResult("Created new file.", ['some-tag'])
-        with tree.lock_write():
+        with Workspace(tree) as ws:
             result, summary = run_lintian_fixer(
-                tree, NewFileFixer('new-file', 'some-tag'),
+                ws, NewFileFixer('new-file', 'some-tag'),
                 update_changelog=False)
         self.assertEqual(summary, "Created new file.")
         self.assertIs(None, result.certainty)
@@ -292,9 +293,9 @@ Arch: all
                           os.path.join(basedir, 'debian/control.blah'))
                 return FixerResult("Renamed a file.")
         orig_basis_tree = tree.branch.basis_tree()
-        with tree.lock_write():
+        with Workspace(tree) as ws:
             result, summary = run_lintian_fixer(
-                tree, RenameFileFixer('rename', 'some-tag'),
+                ws, RenameFileFixer('rename', 'some-tag'),
                 update_changelog=False)
         self.assertEqual(summary, "Renamed a file.")
         self.assertIs(None, result.certainty)
@@ -317,9 +318,9 @@ Arch: all
         class EmptyFixer(Fixer):
             def run(self, basedir, package, *args, **kwargs):
                 return FixerResult("I didn't actually change anything.")
-        with tree.lock_write():
+        with Workspace(tree) as ws:
             self.assertRaises(
-                    NoChanges, run_lintian_fixer, tree,
+                    NoChanges, run_lintian_fixer, ws,
                     EmptyFixer('empty', 'some-tag'), update_changelog=False)
         self.assertEqual(1, tree.branch.revno())
         with tree.lock_read():
@@ -418,9 +419,9 @@ Arch: all
         return tree
 
     def make_change(self, tree, committer=None):
-        with tree.lock_write():
+        with Workspace(tree) as ws:
             result, summary = run_lintian_fixer(
-                tree, DummyFixer('dummy', 'some-tag'),
+                ws, DummyFixer('dummy', 'some-tag'),
                 update_changelog=False, committer=committer)
         self.assertEqual(summary, "Fixed some tag.")
         self.assertEqual(['some-tag'], result.fixed_lintian_tags)

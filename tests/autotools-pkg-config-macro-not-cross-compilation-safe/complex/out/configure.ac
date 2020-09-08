@@ -7,11 +7,9 @@ AM_INIT_AUTOMAKE
 #
 # Check for programs.
 #
-AC_PATH_PROG(PKG_CONFIG,pkg-config)
 
-if test "x$PKG_CONFIG" = "x"; then
-	AC_MSG_ERROR([You need to install pkg-config])
-fi
+AC_PATH_TOOL([PKGCONFIG], [pkg-config], [false], [$PATH$PATH_SEPARATOR$with_pkg_config/bin])
+AS_IF([test x$PKGCONFIG = xfalse], [AC_MSG_ERROR([You don't have pkg-config installed])])
 
 # C# compiler
 AC_PATH_PROG(MCS, gmcs, no)

@@ -15,34 +15,17 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-__all__ = [
-    'split_vcs_url',
-    'unsplit_vcs_url',
-    'browse_url_from_repo_url',
-    'plausible_url',
-    'plausible_browse_url',
-    'sanitize_url',
-    'is_gitlab_site',
-    'determine_browser_url',
-    ]
+
+from unittest import TestCase
+
+from upstream_ontologist.vcs import plausible_url
 
 
-from debmutate.vcs import (
-    split_vcs_url,
-    unsplit_vcs_url,
-    )
+class PlausibleUrlTests(TestCase):
 
-from lintian_brush.vcs import (
-    browse_url_from_repo_url,
-    sanitize_url,
-    is_gitlab_site,
-    determine_browser_url,
-    )
-
-
-def plausible_browse_url(url: str) -> bool:
-    return url.startswith('https://') or url.startswith('http://')
-
-
-def plausible_url(url: str) -> bool:
-    return ':' in url
+    def test_url(self):
+        self.assertFalse(plausible_url('the'))
+        self.assertFalse(plausible_url('1'))
+        self.assertTrue(plausible_url('git@foo:blah'))
+        self.assertTrue(plausible_url('git+ssh://git@foo/blah'))
+        self.assertTrue(plausible_url('https://foo/blah'))

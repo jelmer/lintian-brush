@@ -1,5 +1,5 @@
-#!/usr/bin/python
-# Copyright (C) 2018 Jelmer Vernooij
+#!/usr/bin/python3
+# Copyright (C) 2018 Jelmer Vernooij <jelmer@debian.org>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,29 +15,28 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-import unittest
+__all__ = [
+    'split_vcs_url',
+    'unsplit_vcs_url',
+    'browse_url_from_repo_url',
+    'plausible_url',
+    'plausible_browse_url',
+    'sanitize_url',
+    'is_gitlab_site',
+    'determine_browser_url',
+    ]
 
 
-def test_suite():
-    names = [
-        'changelog',
-        'config',
-        'debhelper',
-        'detect_gbp_dch',
-        'dirty_tracker',
-        'lintian_overrides',
-        'multiarch_hints',
-        'patches',
-        'rules',
-        'run',
-        'salsa',
-        'systemd',
-        'vcs',
-        'xdg',
-        'yaml',
-        ]
-    module_names = [__name__ + '.test_' + name for name in names]
-    module_names.append('upstream_ontologist.tests.test_upstream_ontologist')
-    module_names.append(__name__ + ".fixers.test_suite")
-    loader = unittest.TestLoader()
-    return loader.loadTestsFromNames(module_names)
+from debmutate.vcs import (
+    split_vcs_url,
+    unsplit_vcs_url,
+    )
+
+from lintian_brush.vcs import (
+    browse_url_from_repo_url,
+    plausible_url,
+    plausible_browse_url,
+    sanitize_url,
+    is_gitlab_site,
+    determine_browser_url,
+    )

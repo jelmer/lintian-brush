@@ -23,7 +23,7 @@ setup(
     version="0.125",
     author="Jelmer Vernooij",
     author_email="jelmer@debian.org",
-    packages=["lintian_brush"],
+    packages=["lintian_brush", "debianize"],
     url="https://salsa.debian.org/jelmer/lintian-brush",
     description="Automatic lintian issue fixer",
     project_urls={

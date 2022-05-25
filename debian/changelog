@@ -5,6 +5,7 @@ lintian-brush (0.125) UNRELEASED; urgency=medium
   * Add fixerf for initial-upload-closes-no-bugs.
   * debug-symbol-migration-possibly-complete: avoid removing unnecessary
     overrides when not changing anything.
+  * Split out a separate debianize package.
 
  -- Jelmer Vernooĳ <jelmer@debian.org>  Sun, 10 Apr 2022 17:34:46 +0100
 

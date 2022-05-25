@@ -1,0 +1,6 @@
+usr/bin/lintian-brush
+usr/bin/deb-scrub-obsolete
+usr/bin/apply-multiarch-hints
+usr/share/lintian-brush/fixers/*
+usr/share/lintian-brush/*
+usr/lib/python*/dist-packages/lintian-brush

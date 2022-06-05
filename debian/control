@@ -62,3 +62,16 @@ Description: automatically fix lintian problems
  It comes with a wrapper script that invokes the scripts, updates
  the changelog (if desired) and commits each change to
  version control.
+
+Package: debianize
+Architecture: all
+Depends: lintian-brush, ${python3:Depends}, ${misc:Depends}, decopy, ognibuild
+Description: generate Debian packages from upstream sources
+ Generate Debian packages from information found in the upstream source tree
+ and other metadata, versioned in Git. Resulting source packages will
+ probably build, but are likely to have remaining issues to meet
+ the quality bar for Debian itself. However, they should provide a great
+ starting point for new packages.
+ .
+ Most common ecosystems in Debian (e.g. Python, Ruby, Perl, Go, Rust, Haskell,
+ PHP) are supported.

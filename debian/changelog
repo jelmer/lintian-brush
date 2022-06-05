@@ -1,3 +1,9 @@
+lintian-brush (0.127) UNRELEASED; urgency=medium
+
+  * Split out debianize as a separate package.
+
+ -- Jelmer Vernooĳ <jelmer@debian.org>  Sun, 05 Jun 2022 16:38:58 +0100
+
 lintian-brush (0.126) unstable; urgency=medium
 
   * Add --yolo argument.

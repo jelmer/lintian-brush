@@ -1,8 +1,8 @@
-lintian-brush (0.153) UNRELEASED; urgency=medium
+lintian-brush (0.153) unstable; urgency=medium
 
   * Add manpages for deb-vcs-publish, fix-watch-file.
 
- -- Jelmer Vernooĳ <jelmer@debian.org>  Tue, 21 Nov 2023 13:30:41 +0000
+ -- Jelmer Vernooĳ <jelmer@debian.org>  Sun, 26 Nov 2023 18:20:27 +0000
 
 lintian-brush (0.152) unstable; urgency=medium
 
